@@ -1,0 +1,39 @@
+documents:
+  - type: text
+    content: |
+      Das IDS-RAG Projekt ist eine lokale 'Retrieval Augmented Generation' Lösung.
+      Es ermöglicht das Chatten mit privaten Dokumenten, ohne dass Daten das lokale Netzwerk verlassen.
+      Der Tech-Stack besteht aus: 
+      - Ollama (für LLM und Embeddings)
+      - ChromaDB (Vektordatenbank)
+      - LangChain (Orchestrierung)
+      - Click (CLI Interface)
+    metadata:
+      source: "project_overview"
+      category: "documentation"
+  
+  - type: text
+    content: |
+      Wichtige Befehle für das IDS-RAG CLI:
+      1. 'ids-rag ingest data.yaml' -> Liest Daten ein und speichert sie in der Vektordatenbank.
+      2. 'ids-rag ask "Frage"' -> Stellt eine Frage an das System basierend auf den eingelesenen Daten.
+      3. 'ids-rag clear' -> Löscht die gesamte Datenbank.
+    metadata:
+      source: "manual"
+      category: "usage"
+
+  - type: text
+    content: |
+      Konfiguration:
+      Die Datei 'config.yaml' steuert das Verhalten.
+      Standardmäßig wird das Modell 'llama3.2' für Antworten und 'nomic-embed-text' für Vektoren genutzt.
+      Die Datenbank wird im Ordner './chroma_db' persistiert.
+    metadata:
+      source: "config_docs"
+
+  # Bindet die README.md direkt als Datei ein
+  - type: file
+    path: "./README.md"
+    metadata:
+      source: "repo_readme"
+      type: "markdown"

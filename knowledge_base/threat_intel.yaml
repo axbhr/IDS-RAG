@@ -1,0 +1,66 @@
+documents:
+  # === 1. Allgemeine Zeek Verbindungsmuster ===
+  - type: text
+    content: |
+      Pattern: TCP Port Scanning
+      Zeek Indicator: Many connections with `conn_state` "S0" or "REJ" from the same `id.orig_h` to many different `id.resp_p` or `id.resp_h` in a short time.
+      Description: An attacker sends SYN packets (S0) to check if ports are open. If the target responds with RST (REJ), the port is closed.
+      Severity: Medium
+      Mitigation: Block source IP.
+    metadata:
+      category: "reconnaissance"
+      attack_type: "port_scan"
+
+  - type: text
+    content: |
+      Pattern: SSH Brute Force
+      Zeek Indicator: Multiple connections to port 22 (SSH) from the same IP with short duration and small byte counts, often resulting in `conn_state` "REJ" or successful "SF" but followed by immediate disconnects.
+      Description: Repeated login attempts to guess passwords.
+      Severity: High
+      Mitigation: Implement Fail2Ban or rate limiting.
+    metadata:
+      category: "credential_access"
+      attack_type: "brute_force"
+
+  - type: text
+    content: |
+      Pattern: Data Exfiltration
+      Zeek Indicator: A single connection (often HTTP/HTTPS/DNS) with unusually high `orig_bytes` (upload) compared to `resp_bytes` (download), or long `duration`.
+      Description: An internal host sending large amounts of data to an external IP.
+      Severity: Critical
+      Mitigation: Investigate source host immediately.
+    metadata:
+      category: "exfiltration"
+      attack_type: "data_theft"
+
+  # === 2. Bekannte CVEs (Beispiele) ===
+  - type: text
+    content: |
+      CVE-2021-44228 (Log4Shell) Network Signature:
+      Zeek Indicator: HTTP requests (in `http.log` or weird patterns in `conn.log` on port 80/443/8080) containing strings like "${jndi:ldap://...}".
+      In `conn.log`, look for outbound connections to LDAP ports (389, 1389, 636) from internal web servers.
+      Description: Remote Code Execution via Log4j library.
+      Severity: Critical
+    metadata:
+      category: "exploit"
+      cve: "CVE-2021-44228"
+
+  - type: text
+    content: |
+      CVE-2017-0144 (EternalBlue / WannaCry) Network Signature:
+      Zeek Indicator: SMB traffic (port 445) with specific large payloads or multiple connection attempts to many hosts on port 445 (lateral movement).
+      Description: RCE in Windows SMBv1 server.
+      Severity: Critical
+    metadata:
+      category: "exploit"
+      cve: "CVE-2017-0144"
+
+  # === 3. MITRE ATT&CK Mapping ===
+  - type: text
+    content: |
+      Technique: T1046 - Network Service Scanning.
+      Description: Adversaries may attempt to get a listing of services running on remote hosts.
+      Detection: Look for `conn_state` S0 (SYN sent, no reply) or REJ (Connection rejected) scanning multiple ports.
+    metadata:
+      source: "mitre_attack"
+      technique_id: "T1046"

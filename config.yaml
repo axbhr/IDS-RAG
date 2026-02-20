@@ -1,0 +1,28 @@
+ollama:
+  base_url: "http://localhost:11434"
+  model: "ids-analyst:latest"
+  embedding_model: "nomic-embed-text"
+
+database:
+  persist_directory: "./chroma_db"
+  collection_name: "rag_collection"
+
+zeek:
+  log_path: "./logs/conn.log"
+  interval: 10
+  format: "tsv"
+
+documents:
+  # Example: Direct text content
+  - type: "text"
+    content: "Click is a Python package for creating beautiful command line interfaces in a composable way with as little code as necessary."
+    metadata: 
+      source: "manual_entry"
+  
+  # Example: Local file (uncomment to use)
+  # - type: "file"
+    # path: "./data/notes.txt"
+  
+  # Example: Web page (uncomment to use)
+  # - type: "url"
+    # path: "https://ollama.com/"

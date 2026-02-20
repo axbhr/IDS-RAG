@@ -1,0 +1,9 @@
+click
+langchain
+langchain-community
+langchain-ollama
+langchain-chroma
+chromadb
+pyyaml
+beautifulsoup4
+pypdf
