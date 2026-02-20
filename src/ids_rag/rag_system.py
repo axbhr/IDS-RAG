@@ -1,5 +1,6 @@
 import os
 import yaml
+import re
 from typing import List, Dict, Any
 
 from langchain_ollama import OllamaEmbeddings, ChatOllama
@@ -112,33 +113,122 @@ class RAGSystem:
         else:
             print("No valid documents found to ingest.")
 
-    def query(self, question: str, mode: str = "chat"):
-        """Queries the RAG system. Mode can be 'chat' or 'analyst'."""
-        # Retrieve more documents (k=10) to cover "Data Exfiltration" if it's buried
-        retriever = self.vector_store.as_retriever(search_kwargs={"k": 10})
+    def _normalize_zeek_log(self, log_input: str) -> str:
+        """
+        Normalizes Zeek log input to a consistent machine-readable format.
+        Converts: "src=192.168.1.100:55555 dst=10.0.0.5:22 duration=120s orig_bytes=2500000 resp_bytes=250 conn_state=SF"
+        To:       "NORMALIZED LOG: src_ip=192.168.1.100 | src_port=55555 | dst_ip=10.0.0.5 | dst_port=22 | duration_seconds=120 | ..."
+        """
+        # Extract key=value pairs
+        pattern = r'(\w+)=([\w\.\:]+)'
+        matches = re.findall(pattern, log_input)
+        
+        if not matches:
+            return log_input  # Return as-is if no matches
+        
+        normalized = {}
+        
+        for key, value in matches:
+            lower_key = key.lower()
+            
+            # Handle src/dst with IP:Port format
+            if lower_key == "src":
+                parts = value.split(":")
+                if len(parts) == 2:
+                    normalized["src_ip"] = parts[0]
+                    try:
+                        normalized["src_port"] = int(parts[1])
+                    except:
+                        normalized["src_port"] = parts[1]
+                else:
+                    normalized["src"] = value
+            
+            elif lower_key == "dst":
+                parts = value.split(":")
+                if len(parts) == 2:
+                    normalized["dst_ip"] = parts[0]
+                    try:
+                        normalized["dst_port"] = int(parts[1])
+                    except:
+                        normalized["dst_port"] = parts[1]
+                else:
+                    normalized["dst"] = value
+            
+            # Handle duration: convert "120s" to "120"
+            elif lower_key == "duration":
+                # Remove 's', 'ms', etc.
+                value = re.sub(r'[a-zA-Z]+$', '', value)
+                try:
+                    normalized["duration_seconds"] = float(value)
+                except:
+                    normalized["duration_seconds"] = value
+            
+            # Handle numeric fields
+            elif lower_key in ["orig_bytes", "resp_bytes", "orig_pkts", "resp_pkts"]:
+                try:
+                    normalized[lower_key] = int(value)
+                except:
+                    normalized[lower_key] = value
+            
+            # Handle string fields
+            else:
+                normalized[lower_key] = value
+        
+        # Build formatted output
+        output = "NORMALIZED LOG: "
+        fields = []
+        for k, v in normalized.items():
+            fields.append(f"{k}={v}")
+        output += " | ".join(fields)
+        
+        return output
+
+    def query(self, question: str, mode: str = "chat", top_k: int = 3, debug: bool = False):
+        """Queries the RAG system. Mode can be 'chat' or 'analyst'. top_k=0 retrieves all."""
+        # Normalize question if analyst mode (for Zeek logs)
+        if mode == "analyst" and "Zeek Log:" in question:
+            log_part = question.split("Zeek Log:")[1].strip()
+            normalized = self._normalize_zeek_log(log_part)
+            question = f"Zeek Log: {normalized}"
+            
+            if debug:
+                print("\n[DEBUG] NORMALIZED LOG INPUT:")
+                print(f"  {normalized}")
+                print()
+        
+        # Determine k: if top_k is 0, get all documents, otherwise use the specified value
+        if top_k == 0:
+            # Get approximate count of documents or just use a very large number
+            k = 1000  # Effectively "all" for most cases
+        else:
+            k = top_k
+        
+        # For analyst mode, ALWAYS get all documents to ensure complete pattern matching
+        if mode == "analyst":
+            k = 1000
+
+        # Retrieve documents
+        retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
 
         if mode == "analyst":
-            # The strict analyst prompt is handled by the ModelFile system prompt itself
-            # We just pass the data through broadly
-            template = """
-Context (Attack Patterns):
+            # Minimal template - all logic is in Modelfile system prompt
+            template = """Knowledge Base:
 {context}
 
-Data to Analyze:
-{question}
-"""
+Analyze log:
+{question}"""
         else:
             # Chat mode: We need a STRONG override to break the Modelfile system prompt
             template = """
-SYSTEM OVERRIDE: You are a helpful assistant explaining the contents of the knowledge base.
-IGNORE the 'Network IDS Analyst' persona. DO NOT look for logs. DO NOT output 'CLEAN'.
-Just answer the user's question based on the context provided.
+                        SYSTEM OVERRIDE: You are a helpful assistant explaining the contents of the knowledge base.
+                        IGNORE the 'Network IDS Analyst' persona. DO NOT look for logs. DO NOT output 'CLEAN'.
+                        Just answer the user's question based on the context provided.
 
-Context:
-{context}
+                        Context:
+                        {context}
 
-Question: {question}
-"""
+                        Question: {question}
+                        """
 
         prompt = ChatPromptTemplate.from_template(template)
 

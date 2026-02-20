@@ -96,12 +96,28 @@ def ingest(files):
 
 @cli.command()
 @click.argument("question")
-@click.option("--mode", type=click.Choice(["chat", "analyst"]), default="chat", help="Switch between 'chat' (explanatory) and 'analyst' (strict detection) mode.")
-def ask(question, mode):
+@click.option(
+    "--mode",
+    type=click.Choice(["chat", "analyst"]),
+    default="chat",
+    help="Switch between 'chat' (explanatory) and 'analyst' (strict detection) mode.",
+)
+@click.option(
+    "--top-k",
+    type=int,
+    default=10,
+    help="Number of relevant documents to retrieve (default: 10, use 0 for all).",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug output to see normalized logs.",
+)
+def ask(question, mode, top_k, debug):
     """Ask a question to the RAG system."""
     try:
         rag = RAGSystem(config_path=CONFIG_PATH)
-        rag.query(question, mode=mode)
+        rag.query(question, mode=mode, top_k=top_k, debug=debug)
     except Exception as e:
         click.echo(f"Error: {e}")
 

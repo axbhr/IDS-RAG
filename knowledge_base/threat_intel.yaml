@@ -1,66 +1,49 @@
 documents:
-  # === 1. Allgemeine Zeek Verbindungsmuster ===
+  # === THREAT DEFINITIONS (MACHINE-READABLE) ===
+  
   - type: text
     content: |
-      Pattern: TCP Port Scanning
-      Zeek Indicator: Many connections with `conn_state` "S0" or "REJ" from the same `id.orig_h` to many different `id.resp_p` or `id.resp_h` in a short time.
-      Description: An attacker sends SYN packets (S0) to check if ports are open. If the target responds with RST (REJ), the port is closed.
-      Severity: Medium
-      Mitigation: Block source IP.
+      === DATA EXFILTRATION ===
+      ID: data_exfiltration
+      SEVERITY: Critical
+      CONDITION_1: orig_bytes > resp_bytes
+      CONDITION_2: orig_bytes >= 1000000
+      CONDITION_3: duration_seconds >= 10
+      CONDITION_4: conn_state = SF
+      ALL_CONDITIONS_REQUIRED: YES
+      MATCH_EXAMPLE: orig_bytes=5000000 | resp_bytes=500 | duration_seconds=300 | conn_state=SF → THREAT
+      NO_MATCH_EXAMPLE: orig_bytes=150 | resp_bytes=3000 | duration_seconds=0.5 | conn_state=SF → NOT A THREAT
     metadata:
-      category: "reconnaissance"
-      attack_type: "port_scan"
+      threat_id: "data_exfiltration"
+      severity: "Critical"
 
   - type: text
     content: |
-      Pattern: SSH Brute Force
-      Zeek Indicator: Multiple connections to port 22 (SSH) from the same IP with short duration and small byte counts, often resulting in `conn_state` "REJ" or successful "SF" but followed by immediate disconnects.
-      Description: Repeated login attempts to guess passwords.
-      Severity: High
-      Mitigation: Implement Fail2Ban or rate limiting.
+      === SSH BRUTE FORCE ===
+      ID: ssh_brute_force
+      SEVERITY: High
+      CONDITION_1: dst_port = 22
+      CONDITION_2: conn_state = S0 OR conn_state = REJ
+      CONDITION_3: duration_seconds < 1
+      CONDITION_4: orig_bytes = 0 OR orig_bytes < 100
+      ALL_CONDITIONS_REQUIRED: YES
+      MATCH_EXAMPLE: dst_port=22 | conn_state=S0 | duration_seconds=0.01 | orig_bytes=0 → THREAT
+      NO_MATCH_EXAMPLE: dst_port=443 | conn_state=SF | duration_seconds=300 → NOT A THREAT
     metadata:
-      category: "credential_access"
-      attack_type: "brute_force"
+      threat_id: "ssh_brute_force"
+      severity: "High"
 
   - type: text
     content: |
-      Pattern: Data Exfiltration
-      Zeek Indicator: A single connection (often HTTP/HTTPS/DNS) with unusually high `orig_bytes` (upload) compared to `resp_bytes` (download), or long `duration`.
-      Description: An internal host sending large amounts of data to an external IP.
-      Severity: Critical
-      Mitigation: Investigate source host immediately.
+      === TCP PORT SCANNING ===
+      ID: port_scanning
+      SEVERITY: Medium
+      CONDITION_1: conn_state EQUALS S0 OR conn_state EQUALS REJ
+      CONDITION_2: Multiple connections from same source to different dst_port
+      CONDITION_3: conn_state NOT_EQUALS SF
+      ALL_CONDITIONS_REQUIRED: YES
+      MATCH_EXAMPLE: S0 to dst_port 20,21,22,80,443 within 60s → THREAT
+      NO_MATCH_EXAMPLE: SF to single dst_port 443 with high bytes → NOT A THREAT
     metadata:
-      category: "exfiltration"
-      attack_type: "data_theft"
-
-  # === 2. Bekannte CVEs (Beispiele) ===
-  - type: text
-    content: |
-      CVE-2021-44228 (Log4Shell) Network Signature:
-      Zeek Indicator: HTTP requests (in `http.log` or weird patterns in `conn.log` on port 80/443/8080) containing strings like "${jndi:ldap://...}".
-      In `conn.log`, look for outbound connections to LDAP ports (389, 1389, 636) from internal web servers.
-      Description: Remote Code Execution via Log4j library.
-      Severity: Critical
-    metadata:
-      category: "exploit"
-      cve: "CVE-2021-44228"
-
-  - type: text
-    content: |
-      CVE-2017-0144 (EternalBlue / WannaCry) Network Signature:
-      Zeek Indicator: SMB traffic (port 445) with specific large payloads or multiple connection attempts to many hosts on port 445 (lateral movement).
-      Description: RCE in Windows SMBv1 server.
-      Severity: Critical
-    metadata:
-      category: "exploit"
-      cve: "CVE-2017-0144"
-
-  # === 3. MITRE ATT&CK Mapping ===
-  - type: text
-    content: |
-      Technique: T1046 - Network Service Scanning.
-      Description: Adversaries may attempt to get a listing of services running on remote hosts.
-      Detection: Look for `conn_state` S0 (SYN sent, no reply) or REJ (Connection rejected) scanning multiple ports.
-    metadata:
-      source: "mitre_attack"
-      technique_id: "T1046"
+      threat_id: "port_scanning"
+      severity: "Medium"

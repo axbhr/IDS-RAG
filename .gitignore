@@ -81,3 +81,7 @@ dmypy.json
 # Data files (if needed)
 *.csv
 data/
+
+
+# other
+protokoll.md
