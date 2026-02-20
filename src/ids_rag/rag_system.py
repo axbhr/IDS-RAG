@@ -1,3 +1,8 @@
+# IDS-RAG: Intrusion Detection System with Retrieval-Augmented Generation
+# Copyright (C) 2026 - This file is part of IDS-RAG.
+# Licensed under GNU General Public License v3.0
+# See LICENSE file for details or visit https://www.gnu.org/licenses/gpl-3.0.html
+
 import os
 import yaml
 import re
@@ -120,17 +125,17 @@ class RAGSystem:
         To:       "NORMALIZED LOG: src_ip=192.168.1.100 | src_port=55555 | dst_ip=10.0.0.5 | dst_port=22 | duration_seconds=120 | ..."
         """
         # Extract key=value pairs
-        pattern = r'(\w+)=([\w\.\:]+)'
+        pattern = r"(\w+)=([\w\.\:]+)"
         matches = re.findall(pattern, log_input)
-        
+
         if not matches:
             return log_input  # Return as-is if no matches
-        
+
         normalized = {}
-        
+
         for key, value in matches:
             lower_key = key.lower()
-            
+
             # Handle src/dst with IP:Port format
             if lower_key == "src":
                 parts = value.split(":")
@@ -142,7 +147,7 @@ class RAGSystem:
                         normalized["src_port"] = parts[1]
                 else:
                     normalized["src"] = value
-            
+
             elif lower_key == "dst":
                 parts = value.split(":")
                 if len(parts) == 2:
@@ -153,56 +158,58 @@ class RAGSystem:
                         normalized["dst_port"] = parts[1]
                 else:
                     normalized["dst"] = value
-            
+
             # Handle duration: convert "120s" to "120"
             elif lower_key == "duration":
                 # Remove 's', 'ms', etc.
-                value = re.sub(r'[a-zA-Z]+$', '', value)
+                value = re.sub(r"[a-zA-Z]+$", "", value)
                 try:
                     normalized["duration_seconds"] = float(value)
                 except:
                     normalized["duration_seconds"] = value
-            
+
             # Handle numeric fields
             elif lower_key in ["orig_bytes", "resp_bytes", "orig_pkts", "resp_pkts"]:
                 try:
                     normalized[lower_key] = int(value)
                 except:
                     normalized[lower_key] = value
-            
+
             # Handle string fields
             else:
                 normalized[lower_key] = value
-        
+
         # Build formatted output
         output = "NORMALIZED LOG: "
         fields = []
         for k, v in normalized.items():
             fields.append(f"{k}={v}")
         output += " | ".join(fields)
-        
+
         return output
 
-    def query(self, question: str, mode: str = "chat", top_k: int = 3, debug: bool = False):
+    def query(
+        self, question: str, mode: str = "chat", top_k: int = 3, debug: bool = False
+    ):
         """Queries the RAG system. Mode can be 'chat' or 'analyst'. top_k=0 retrieves all."""
         # Normalize question if analyst mode (for Zeek logs)
         if mode == "analyst" and "Zeek Log:" in question:
             log_part = question.split("Zeek Log:")[1].strip()
             normalized = self._normalize_zeek_log(log_part)
             question = f"Zeek Log: {normalized}"
-            
+
             if debug:
                 print("\n[DEBUG] NORMALIZED LOG INPUT:")
                 print(f"  {normalized}")
                 print()
-        
+
         # Determine k: if top_k is 0, get all documents, otherwise use the specified value
         if top_k == 0:
             # Get approximate count of documents or just use a very large number
             k = 1000  # Effectively "all" for most cases
         else:
             k = top_k
-        
+
         # For analyst mode, ALWAYS get all documents to ensure complete pattern matching
         if mode == "analyst":
             k = 1000
