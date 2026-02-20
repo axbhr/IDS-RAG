@@ -175,4 +175,6 @@ Ollama system prompt defining threat-matching behavior:
 
 ## License
 
-MIT
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+More information: [GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.html)
