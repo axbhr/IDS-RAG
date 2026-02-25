@@ -11,6 +11,7 @@ dependencies = [
     "langchain-ollama>=0.2.0",
     "langchain-chroma>=0.1.4",
     "chromadb>=0.5.5",
+    "fastembed>=0.4.0",
     "pyyaml>=6.0.2",
     "beautifulsoup4>=4.12.3",
     "pypdf>=5.0.0",
@@ -26,3 +27,5 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ids_rag"]
+
+

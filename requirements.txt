@@ -4,6 +4,7 @@ langchain-community
 langchain-ollama
 langchain-chroma
 chromadb
+fastembed
 pyyaml
 beautifulsoup4
 pypdf

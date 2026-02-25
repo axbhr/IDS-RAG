@@ -12,6 +12,7 @@ setup(
         "langchain-ollama",
         "langchain-chroma",
         "chromadb",
+        "fastembed",
         "pyyaml",
     ],
     entry_points="""

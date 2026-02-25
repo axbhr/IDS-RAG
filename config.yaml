@@ -1,7 +1,8 @@
 ollama:
   base_url: "http://localhost:11434"
-  model: "ids-analyst:latest"
-  embedding_model: "nomic-embed-text"
+  model: "mistral:latest"
+  # Embeddings are handled natively via sentence-transformers (BAAI/bge-m3)
+  # embedding_model: "nomic-embed-text"  # no longer used
 
 database:
   persist_directory: "./chroma_db"

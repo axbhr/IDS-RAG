@@ -1,10 +1,8 @@
 import click
 import os
-import time
-import json
 from .rag_system import RAGSystem
-from .zeek_monitor import ZeekMonitor
-from .knowledge_sync import sync_sigma_rules
+from .alert_parser import SuricataAlertParser, SuricataMonitor
+from .knowledge_sync import sync_mitre_attack, sync_owasp_top10
 
 # Initialize RAG system with default config location
 CONFIG_PATH = os.path.join(os.getcwd(), "config.yaml")
@@ -30,22 +28,45 @@ def cli():
     "--ingest", "do_ingest", is_flag=True, help="Automatically ingest after syncing."
 )
 def sync(do_ingest):
-    """Download and process Sigma rules from the internet."""
-    output_file = "knowledge_base/sigma_rules.yaml"
-    if sync_sigma_rules(output_file):
-        if do_ingest:
-            click.echo("\nAuto-ingesting new rules...")
-            try:
-                rag = RAGSystem(config_path=CONFIG_PATH)
-                rag.ingest_from_yaml(output_file)
-            except Exception as e:
-                click.echo(f"Error during ingestion: {e}")
+    """Download MITRE ATT&CK Top 10 and OWASP Top 10 into the knowledge base."""
+    sources = [
+        {
+            "label": "MITRE ATT&CK Top 10",
+            "output": "knowledge_base/mitre_attack_top10.yaml",
+            "fn": sync_mitre_attack,
+        },
+        {
+            "label": "OWASP Top 10 (2021)",
+            "output": "knowledge_base/owasp_top10.yaml",
+            "fn": sync_owasp_top10,
+        },
+    ]
+
+    synced_files = []
+    for source in sources:
+        click.echo(f"\n--- Syncing {source['label']} ---")
+        if source["fn"](source["output"]):
+            synced_files.append(source["output"])
         else:
-            click.echo(
-                "\nSync complete. Run 'ids-rag ingest' to load the new rules into the database."
-            )
+            click.echo(f"Warning: {source['label']} sync failed.")
+
+    if not synced_files:
+        click.echo("\nSync failed for all sources.")
+        return
+
+    click.echo(f"\nSync complete. {len(synced_files)}/{len(sources)} sources succeeded.")
+
+    if do_ingest:
+        click.echo("\nAuto-ingesting synced files...")
+        try:
+            rag = RAGSystem(config_path=CONFIG_PATH)
+            for f in synced_files:
+                click.echo(f"  Ingesting {f}...")
+                rag.ingest_from_yaml(f)
+        except Exception as e:
+            click.echo(f"Error during ingestion: {e}")
     else:
-        click.echo("Sync failed.")
+        click.echo("Run 'ids-rag ingest' to load the new rules into the database.")
 
 
 @cli.command()
@@ -123,6 +144,37 @@ def ask(question, mode, top_k, debug):
 
 
 @cli.command()
+@click.argument("query")
+@click.option(
+    "--top-k",
+    type=int,
+    default=5,
+    help="Number of documents to retrieve (default: 5).",
+)
+def retrieve(query, top_k):
+    """Show which documents are retrieved from the vector DB for a given query."""
+    try:
+        rag = RAGSystem(config_path=CONFIG_PATH)
+        results = rag.retrieve(query, top_k=top_k)
+
+        if not results:
+            click.echo("No documents retrieved.")
+            return
+
+        click.echo(f"\nRetrieved {len(results)} document(s) for query: \"{query}\"\n")
+        click.echo("=" * 72)
+
+        for doc in results:
+            click.echo(f"[#{doc['rank']}] Metadata: {doc['metadata']}")
+            click.echo("-" * 72)
+            click.echo(doc["content"])
+            click.echo("=" * 72)
+
+    except Exception as e:
+        click.echo(f"Error: {e}")
+
+
+@cli.command()
 def clear():
     """Clear the vector database."""
     if click.confirm("Are you sure you want to clear the entire database?"):
@@ -134,56 +186,34 @@ def clear():
 
 
 @cli.command()
-@click.option("--log-path", help="Path to Zeek log file (overrides config)")
-@click.option("--interval", type=int, help="Interval in seconds (overrides config)")
-def monitor(log_path, interval):
-    """Start monitoring Zeek logs and process with RAG."""
+@click.option("--log-path", help="Path to Suricata eve.json (overrides config)")
+@click.option("--from-beginning", is_flag=True, help="Process the whole file, not just new lines.")
+@click.option("--top-k", type=int, default=5, help="KB documents to retrieve per alert (default: 5).")
+def monitor(log_path, from_beginning, top_k):
+    """Start monitoring a Suricata eve.json and process alerts with RAG."""
     config = _load_config(CONFIG_PATH)
-    zeek_config = config.get("zeek", {})
+    suricata_config = config.get("suricata", {})
 
-    # Defaults
-    target_log = log_path or zeek_config.get("log_path", "./logs/conn.json")
-    poll_interval = interval or zeek_config.get("interval", 10)
+    target_log = log_path or suricata_config.get("log_path", "/var/log/suricata/eve.json")
 
     if not os.path.exists(target_log):
-        click.echo(f"Error: Log file not found: {target_log}")
-        click.echo("Make sure Zeek is running or create a dummy file for testing.")
+        click.echo(f"Error: EVE log not found: {target_log}")
         return
 
-    click.echo(f"Starting Zeek Monitor on {target_log} (Interval: {poll_interval}s)...")
+    click.echo(f"Starting Suricata Monitor on {target_log}...")
 
-    zeek_mon = ZeekMonitor(target_log, poll_interval)
+    monitor = SuricataMonitor(target_log, from_beginning=from_beginning)
     rag = RAGSystem(config_path=CONFIG_PATH)
 
     try:
-        for batch in zeek_mon.follow():
-            if not batch:
-                continue
-
-            click.echo(f"\n[Zeek Monitor] Processing batch of {len(batch)} records...")
-
-            # Format batch for LLM. If JSON, dump. If strings, join.
-            if isinstance(batch[0], dict):
-                batch_text = json.dumps(batch, indent=2)
-            else:
-                batch_text = "\n".join(batch)
-
-            # Identify columns for context
-            zeek_columns = "ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, service, duration, orig_bytes, resp_bytes, conn_state, local_orig, local_resp, missed_bytes, history, orig_pkts, orig_ip_bytes, resp_pkts, resp_ip_bytes, tunnel_parents"
-
-            query = f"""
-            ANALYZE BATCH:
-            Columns: {zeek_columns}
-            
-            Logs (TSV):
-            {batch_text}
-            """
-
-            rag.query(query, mode="analyst")
+        for alert in monitor.follow():
+            click.echo(f"\n{alert}")
+            query = alert.build_retrieval_query()
+            rag.query(query, mode="analyst", top_k=top_k)
 
     except KeyboardInterrupt:
         click.echo("\nStopping monitor...")
-        zeek_mon.stop()
+        monitor.stop()
 
 
 if __name__ == "__main__":
